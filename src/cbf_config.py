@@ -60,13 +60,13 @@ CBF_NUM_HIDDEN = 4          # same depth as classifier
 # =============================================================================
 CBF_LR = 1e-4               # Adam learning rate
 CBF_BATCH_SIZE = 4096        # batch size per DataLoader
-CBF_EPOCHS = 500             # training epochs
+CBF_EPOCHS = 5000             # training epochs
 LAMBDA_SAFE = 1.0            # weight for safe sign loss
 LAMBDA_UNSAFE = 1.0          # weight for unsafe sign loss
 LAMBDA_DECREASE = 1.0        # weight for CBF decrease condition
-CBF_ALPHA = 0.1              # barrier decay rate (α in CBF1 Eq 16)
-CBF_DELTA_T = 1.0            # time step (Δ in CBF1 Eq 16)
-SAFETY_MARGIN = 1.0          # margin γ: forces B ≥ γ for safe, B ≤ -γ for unsafe
+CBF_ALPHA = 1.0              # barrier decay rate — always 1
+CBF_DELTA_T = 1.0            # time step
+SAFETY_MARGIN = 0.0          # margin γ: forces B ≥ γ for safe, B ≤ -γ for unsafe
 
 # =============================================================================
 # Transition Data Generation

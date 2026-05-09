@@ -87,7 +87,12 @@ class CBFTransitionDataset(Dataset):
         return len(self.z_k)
 
     def __getitem__(self, idx):
-        return self.z_k[idx], self.z_nom[idx], self.obs[idx]
+        item = (self.z_k[idx], self.z_nom[idx], self.obs[idx])
+        if self.safe_k is not None:
+            item = item + (self.safe_k[idx],)
+        if self.safe_nom is not None:
+            item = item + (self.safe_nom[idx],)
+        return item
 
     def get_stats(self):
         """Return dataset statistics."""

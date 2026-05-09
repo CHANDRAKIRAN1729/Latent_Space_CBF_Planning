@@ -44,7 +44,7 @@ logging.basicConfig(
 
 def compute_cbf_loss(cbf_net, z, obs, label, z_k, z_nom, obs_trans,
                      lambda_s, lambda_u, lambda_d, alpha, delta_t,
-                     safety_margin=0.0):
+                     safety_margin=0.0, safe_k=None, safe_nom=None):
     """
     Compute the three-term CBF training loss.
 
@@ -55,6 +55,8 @@ def compute_cbf_loss(cbf_net, z, obs, label, z_k, z_nom, obs_trans,
         lambda_s, lambda_u, lambda_d: loss weights
         alpha, delta_t: CBF parameters
         safety_margin: optional margin γ
+        safe_k:  (optional) safety labels for z_k (1=safe, 0=unsafe)
+        safe_nom: (optional) safety labels for z_nom
 
     Returns:
         loss: total weighted loss
@@ -80,11 +82,11 @@ def compute_cbf_loss(cbf_net, z, obs, label, z_k, z_nom, obs_trans,
 
     # =========================================================================
     # Term 2: Unsafe sign loss — CBF1 Eq 7
-    # B(z, o) < -safety_margin for unsafe states
+    # B(z, o) ≤ safety_margin for unsafe states (conservative: [0, γ] = unsafe)
     # =========================================================================
     if unsafe_mask.sum() > 0:
         B_unsafe = cbf_net(z[unsafe_mask], obs[unsafe_mask])
-        L_unsafe = torch.mean(F.relu(B_unsafe + safety_margin))
+        L_unsafe = torch.mean(F.relu(B_unsafe - safety_margin))
         unsafe_accuracy = (B_unsafe < 0).float().mean().item()
         mean_B_unsafe = B_unsafe.mean().item()
     else:
@@ -93,10 +95,30 @@ def compute_cbf_loss(cbf_net, z, obs, label, z_k, z_nom, obs_trans,
         mean_B_unsafe = 0.0
 
     # =========================================================================
+    # Term 1b/2b: Trajectory-distributed sign losses
+    # Use safety labels from transition data to train B on the same
+    # distribution the planner visits at inference.
+    # This directly addresses the 57.7% trajectory unsafe accuracy.
+    # =========================================================================
+    if safe_k is not None:
+        traj_safe_mask = (safe_k == 1)
+        traj_unsafe_mask = (safe_k == 0)
+        B_k = cbf_net(z_k, obs_trans)  # reused below for decrease condition
+
+        if traj_safe_mask.sum() > 0:
+            L_safe_traj = torch.mean(F.relu(-B_k[traj_safe_mask] + safety_margin))
+            L_safe = (L_safe + L_safe_traj) / 2.0
+
+        if traj_unsafe_mask.sum() > 0:
+            L_unsafe_traj = torch.mean(F.relu(B_k[traj_unsafe_mask] - safety_margin))
+            L_unsafe = (L_unsafe + L_unsafe_traj) / 2.0
+    else:
+        B_k = cbf_net(z_k, obs_trans)
+
+    # =========================================================================
     # Term 3: CBF decrease condition — CBF1 Eq 8 / Eq 16
     # B(z_{k+1}^nom, o) ≥ (1 - α·Δ) · B(z_k, o)
     # =========================================================================
-    B_k = cbf_net(z_k, obs_trans)
     B_nom = cbf_net(z_nom, obs_trans)
     target = (1.0 - alpha * delta_t) * B_k
     L_decrease = torch.mean(F.relu(target - B_nom))
@@ -139,10 +161,14 @@ def train_epoch(cbf_net, optimizer, label_loader, trans_loader, device,
     for z, obs, label in label_loader:
         # Get transition batch (cycle if shorter)
         try:
-            z_k, z_nom, obs_trans = next(trans_iter)
+            trans_batch = next(trans_iter)
         except StopIteration:
             trans_iter = iter(trans_loader)
-            z_k, z_nom, obs_trans = next(trans_iter)
+            trans_batch = next(trans_iter)
+
+        z_k, z_nom, obs_trans = trans_batch[0], trans_batch[1], trans_batch[2]
+        safe_k = trans_batch[3].to(device) if len(trans_batch) > 3 else None
+        safe_nom = trans_batch[4].to(device) if len(trans_batch) > 4 else None
 
         z, obs, label = z.to(device), obs.to(device), label.to(device)
         z_k, z_nom, obs_trans = z_k.to(device), z_nom.to(device), obs_trans.to(device)
@@ -150,7 +176,8 @@ def train_epoch(cbf_net, optimizer, label_loader, trans_loader, device,
         optimizer.zero_grad()
         loss, metrics = compute_cbf_loss(
             cbf_net, z, obs, label, z_k, z_nom, obs_trans,
-            lambda_s, lambda_u, lambda_d, alpha, delta_t, safety_margin
+            lambda_s, lambda_u, lambda_d, alpha, delta_t, safety_margin,
+            safe_k=safe_k, safe_nom=safe_nom
         )
         loss.backward()
         torch.nn.utils.clip_grad_norm_(cbf_net.parameters(), max_grad_norm)
@@ -182,17 +209,22 @@ def validate(cbf_net, label_loader, trans_loader, device,
     with torch.no_grad():
         for z, obs, label in label_loader:
             try:
-                z_k, z_nom, obs_trans = next(trans_iter)
+                trans_batch = next(trans_iter)
             except StopIteration:
                 trans_iter = iter(trans_loader)
-                z_k, z_nom, obs_trans = next(trans_iter)
+                trans_batch = next(trans_iter)
+
+            z_k, z_nom, obs_trans = trans_batch[0], trans_batch[1], trans_batch[2]
+            safe_k = trans_batch[3].to(device) if len(trans_batch) > 3 else None
+            safe_nom = trans_batch[4].to(device) if len(trans_batch) > 4 else None
 
             z, obs, label = z.to(device), obs.to(device), label.to(device)
             z_k, z_nom, obs_trans = z_k.to(device), z_nom.to(device), obs_trans.to(device)
 
             _, metrics = compute_cbf_loss(
                 cbf_net, z, obs, label, z_k, z_nom, obs_trans,
-                lambda_s, lambda_u, lambda_d, alpha, delta_t, safety_margin
+                lambda_s, lambda_u, lambda_d, alpha, delta_t, safety_margin,
+                safe_k=safe_k, safe_nom=safe_nom
             )
 
             for k, v in metrics.items():
