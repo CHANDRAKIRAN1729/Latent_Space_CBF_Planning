@@ -1,7 +1,7 @@
 """
 CBF Training — Dual-batch training of the neural barrier function B_θ(z, o).
 
-Training uses three loss terms (TrainingCBF Section 5):
+Training uses three loss terms:
     1. Safe sign loss:    λ_s · E[max(-B(z,o), 0)]     — push B ≥ 0 for safe states
     2. Unsafe sign loss:  λ_u · E[max(B(z,o), 0)]      — push B < 0 for unsafe states
     3. Decrease condition: λ_d · E[max(target - B_nom, 0)] — enforce forward invariance
@@ -10,11 +10,6 @@ Dual-batch strategy (Implementation Plan Section 5.3):
     Each iteration draws from two DataLoaders:
     - Batch 1: state-label dataset  (for Terms 1 & 2)
     - Batch 2: transition dataset   (for Term 3)
-
-References:
-    - CBF1.pdf Eqs 6-8: Loss function terms
-    - TrainingCBF Sections 5-6: Training objective and algorithm
-    - Implementation Plan Sections 5-6: Training strategy and monitoring
 """
 
 from __future__ import print_function
@@ -67,7 +62,7 @@ def compute_cbf_loss(cbf_net, z, obs, label, z_k, z_nom, obs_trans,
     unsafe_mask = (label == 1)
 
     # =========================================================================
-    # Term 1: Safe sign loss — CBF1 Eq 6
+    # Term 1: Safe sign loss
     # B(z, o) ≥ safety_margin for safe states
     # =========================================================================
     if safe_mask.sum() > 0:
@@ -81,7 +76,7 @@ def compute_cbf_loss(cbf_net, z, obs, label, z_k, z_nom, obs_trans,
         mean_B_safe = 0.0
 
     # =========================================================================
-    # Term 2: Unsafe sign loss — CBF1 Eq 7
+    # Term 2: Unsafe sign loss
     # B(z, o) ≤ safety_margin for unsafe states (conservative: [0, γ] = unsafe)
     # =========================================================================
     if unsafe_mask.sum() > 0:
@@ -116,7 +111,7 @@ def compute_cbf_loss(cbf_net, z, obs, label, z_k, z_nom, obs_trans,
         B_k = cbf_net(z_k, obs_trans)
 
     # =========================================================================
-    # Term 3: CBF decrease condition — CBF1 Eq 8 / Eq 16
+    # Term 3: CBF decrease condition
     # B(z_{k+1}^nom, o) ≥ (1 - α·Δ) · B(z_k, o)
     # =========================================================================
     B_nom = cbf_net(z_nom, obs_trans)
