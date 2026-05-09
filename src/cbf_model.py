@@ -1,12 +1,7 @@
 """
 CBF Model — Neural Control Barrier Function B_θ(z, o).
 
-Defines the barrier network and the CBF2 safety correction function.
-
-References:
-    - CBF1.pdf Eqs 1-3: CBF definition (B ≥ 0 safe, B < 0 unsafe)
-    - CBF2.pdf Eqs 3-10: Safe latent update derivation
-    - TrainingCBF.pdf Section 4: Architecture
+Defines the barrier network and the CBF safety correction function.
 """
 
 import torch
@@ -65,7 +60,7 @@ class BarrierNet(nn.Module):
 def cbf_safety_correction(cbf_net, z_current, z_nominal, obs, alpha, delta_t,
                           lambda_max=1.0, safe_threshold=None, max_iters=5):
     """
-    CBF2.pdf Eqs 1-10: Single-step closed-form safe latent update.
+    Single-step closed-form safe latent update.
 
     Given a nominal next state z_nom from the Goal+Prior optimizer, compute
     the minimum correction to satisfy the CBF decrease constraint:
@@ -101,7 +96,7 @@ def cbf_safety_correction(cbf_net, z_current, z_nominal, obs, alpha, delta_t,
     with torch.no_grad():
         B_current = cbf_net(z_current.detach(), obs)    # B(z_k)
 
-    # Target barrier value — CBF2 Eq 1: B_target = (1 - α·Δ) · B(z_k)
+    # Target barrier value : B_target = (1 - α·Δ) · B(z_k)
     B_target = (1.0 - alpha * delta_t) * B_current
 
     # =========================================================================
