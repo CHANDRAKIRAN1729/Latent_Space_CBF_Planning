@@ -7,8 +7,6 @@ Generates (z_k, z_{k+1}^nom, obs) transition pairs by running the nominal planne
 Critical: The transitions MUST come from the Goal+Prior-only planner because that is
 what the CBF will see at inference time. Training on transitions from a different
 planner would create a distribution mismatch that breaks the CBF guarantees.
-
-Reference: TrainingCBF Sections 2B, 3; Implementation Plan Section 3.2
 """
 
 from __future__ import print_function
